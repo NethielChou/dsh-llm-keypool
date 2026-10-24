@@ -53,8 +53,9 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 1. 重启 DSH，点侧边栏「轮换池」；
 2. 「从已配置的模型里添加」→ 选供应商、选模型 → 加入池子；
 3. ↑ ↓ 调整顺序（顺序就是兜底顺序）；
-4. 「保存」；
-5. 在面板「状态」里查看当前路由 / 冷却中的供应商 / 最近切换记录。
+4. 需要时勾上「认证失败（401/403）也切换」（key 被吊销/失效时也自动换下一条；默认只对额度类错误生效）；
+5. 「保存」；
+6. 在面板「状态」里查看当前路由 / 冷却中的供应商 / 最近切换记录。
 
 额度用尽时的行为：当前路由冷却（默认 10 分钟）+ 同一轮自动切到下一条健康的 `供应商/模型` 重试；
 全部冷却则这一步正常失败，不会死循环。
@@ -75,9 +76,15 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
     }
   ],
   "cooldownMs": 600000,
-  "maxSwitchesPerTurn": 3
+  "maxSwitchesPerTurn": 3,
+  "codes": ["QUOTA", "ACCOUNT_QUOTA"]
 }
 ```
+
+- `codes` 是**触发切换的失败类型**：默认 `QUOTA / ACCOUNT_QUOTA`（额度类）。面板里的
+  「认证失败（401/403）也切换」勾选项就是往这里加 `AUTH`；也可以在文件里直接写成
+  `["QUOTA", "ACCOUNT_QUOTA", "AUTH"]`。
+- 除了 `codes`，默认还会按中英文报错文案（余额不足/额度用尽/quota exceeded 等）判断；文案特殊时在行配置里加 `patterns`。
 
 也可以不用面板，直接在 profile 的 `cordis.patch.yml` 写行配置（面板文件优先）：
 
@@ -128,7 +135,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 
 ## 验证
 
-- 单元测试：`node --test test/*.mjs`，**42/42 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
+- 单元测试：`node --test test/*.mjs`，**44/44 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
   面板三个回环端点/浏览器半区加载/闲时无副作用）。
 - 端到端（真实 DSH headless + 本地 mock OpenAI 网关）：
   - 跨供应商跨模型兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0；

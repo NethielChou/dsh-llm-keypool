@@ -239,6 +239,36 @@ test('only rewrites a route whose provider AND model are in the pool', async () 
   assert.deepEqual(await ask('vendor-a', 'model-1'), { provider: 'vendor-b', model: 'model-2' })
 })
 
+test('panel-written codes make AUTH a failover trigger, and only when present', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-keypool-auth-'))
+  const previous = process.env.DSH_KEYPOOL_CONFIG
+  const file = join(dir, 'route-pool.json')
+  process.env.DSH_KEYPOOL_CONFIG = file
+  const AUTH = { code: 'AUTH', message: '401: invalid token' }
+  const withCodes = (codes) => writeFileSync(file, JSON.stringify({ ...POOL_CONFIG, codes }), 'utf8')
+  try {
+    const { ctx, dispatch } = createFakeCtx()
+    // The row carries nothing: pool + codes come from the GUI file.
+    apply(ctx, { pools: [] })
+    withCodes(['AUTH'])
+    assert.deepEqual(await fail(dispatch, 'route-a', AUTH), { kind: 'retry' })
+
+    // Without AUTH in the codes the same failure is left to the kernel.
+    const second = createFakeCtx()
+    apply(second.ctx, { pools: [] })
+    withCodes(['QUOTA', 'ACCOUNT_QUOTA'])
+    assert.equal(await fail(second.dispatch, 'route-a', AUTH), TERMINAL)
+
+    // Row codes apply when the file does not override them.
+    const third = createFakeCtx()
+    apply(third.ctx, { ...POOL_CONFIG, codes: ['AUTH'] })
+    writeFileSync(file, JSON.stringify(POOL_CONFIG), 'utf8')
+    assert.deepEqual(await fail(third.dispatch, 'route-a', AUTH), { kind: 'retry' })
+  } finally {
+    process.env.DSH_KEYPOOL_CONFIG = previous
+  }
+})
+
 test('warns and stays inactive on an empty pool config', async () => {
   const { ctx, dispatch, logs } = createFakeCtx()
   apply(ctx, { pools: [] })

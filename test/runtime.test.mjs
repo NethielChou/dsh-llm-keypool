@@ -85,6 +85,25 @@ test('a UTF-8 BOM written by a hand editor is tolerated', () => {
   }
 })
 
+test('the optional codes list is normalized and keeps only usable strings', () => {
+  const previous = process.env.DSH_KEYPOOL_CONFIG
+  const file = join(dir, 'codes.json')
+  process.env.DSH_KEYPOOL_CONFIG = file
+  try {
+    writeFileSync(file, JSON.stringify({ ...GOOD, codes: ['AUTH', 7, ' ', 'RATE_LIMIT'] }), 'utf8')
+    const read = readStoredConfig()
+    assert.deepEqual(read.codes, ['AUTH', 'RATE_LIMIT'])
+    const saved = writeStoredConfig({ ...GOOD, codes: ['AUTH'] })
+    assert.deepEqual(saved.codes, ['AUTH'])
+    assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).codes, ['AUTH'])
+    // A document without codes keeps the key absent so the row config still applies.
+    writeStoredConfig(GOOD)
+    assert.equal('codes' in readStoredConfig(), false)
+  } finally {
+    process.env.DSH_KEYPOOL_CONFIG = previous
+  }
+})
+
 test('status snapshot reports active route, cooling and switches newest first', () => {
   noteActiveRoute('vendor-b', 'model-2')
   const until = Date.now() + 60_000

@@ -22,7 +22,7 @@ import {
   storedConfigError,
   writeStoredConfig,
 } from './lib/runtime.js'
-import { readNonNegativeInt, readPositiveInt } from './lib/shared.js'
+import { readNonNegativeInt, readPositiveInt, readStringArray } from './lib/shared.js'
 
 /** Cordis plugin name (matches the package name so the browser half attaches). */
 export const name = 'dsh-llm-keypool'
@@ -86,10 +86,12 @@ const modelEntry = (model) => ({
  * @param {Record<string, unknown>} [config] this row's config (row fallback shown by the panel).
  */
 export function apply(ctx, config = {}) {
+  const rowCodes = readStringArray(config.codes)
   const rowFallback = {
     pools: Array.isArray(config.pools) ? config.pools : [],
     cooldownMs: readNonNegativeInt(config.cooldownMs, 10 * 60_000),
     maxSwitchesPerTurn: readPositiveInt(config.maxSwitchesPerTurn, 3),
+    ...(rowCodes === undefined ? {} : { codes: rowCodes }),
   }
 
   /** @param {import('node:http').ServerResponse} res */

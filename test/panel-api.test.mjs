@@ -117,12 +117,14 @@ test('config GET falls back to the row config, POST writes the pool file', async
     pools: [{ name: '我的轮换池', routes: [{ provider: 'ustc-back', model: 'deepseek-flash' }, { provider: 'vendor-b', model: 'model-2' }] }],
     cooldownMs: 120000,
     maxSwitchesPerTurn: 2,
+    codes: ['QUOTA', 'ACCOUNT_QUOTA', 'AUTH'],
   }
   const write = exchange('POST', JSON.stringify(payload))
   const saved = await write.invoke(ctx.routes.get('/api/keypool/config'))
   assert.equal(saved.status, 200)
   assert.equal(saved.body.ok, true)
   assert.equal(saved.body.saved.pools[0].routes.length, 2)
+  assert.deepEqual(saved.body.saved.codes, ['QUOTA', 'ACCOUNT_QUOTA', 'AUTH'])
   assert.equal(runtime.readStoredConfig().cooldownMs, 120000)
 
   const after = await exchange('GET').invoke(ctx.routes.get('/api/keypool/config'))
