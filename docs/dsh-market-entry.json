@@ -1,0 +1,12 @@
+{
+  "id": "dsh-llm-keypool",
+  "name": "多 Key 轮换池",
+  "nameEn": "LLM Key Pool",
+  "author": "NethielChou",
+  "description": "把 DSH 里已配置的供应商/模型手动加入轮换池：额度用完自动按顺序切到下一条，可跨供应商跨模型；侧边栏面板支持勾选、排序，并显示当前路由、冷却与最近切换记录。",
+  "descriptionEn": "Manually add your configured provider/model routes to a failover pool. When a route runs out of quota the next healthy one is used in the same turn, across providers and models. A sidebar panel lets you pick, order, and watch the live route, cooling providers, and recent switches.",
+  "repo": "https://github.com/NethielChou/dsh-llm-keypool",
+  "npm": "dsh-llm-keypool",
+  "category": "tools",
+  "subcategory": "model"
+}

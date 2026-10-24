@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "LLM Key Pool",
+    "description": "Rotates API credentials after quota failures and fails over across provider routes."
+  }
+}

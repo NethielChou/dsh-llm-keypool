@@ -1,0 +1,75 @@
+{
+  "name": "dsh-llm-keypool",
+  "version": "0.1.0",
+  "description": "DSH rotation pool: a sidebar panel to pick configured provider/model routes and fail over across them on quota errors, plus optional multi-key rotation.",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./key-rotate": "./lib/key-rotate.js",
+    "./route-pool": "./lib/route-pool.js",
+    "./shared": "./lib/shared.js",
+    "./runtime": "./lib/runtime.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "llm",
+    "api-key",
+    "rotation",
+    "failover",
+    "quota",
+    "model-router"
+  ],
+  "author": "NethielChou",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NethielChou/dsh-llm-keypool.git"
+  },
+  "homepage": "https://github.com/NethielChou/dsh-llm-keypool#readme",
+  "bugs": {
+    "url": "https://github.com/NethielChou/dsh-llm-keypool/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.1-rc.2"
+  },
+  "scripts": {
+    "test": "node --test test/key-rotate.test.mjs test/route-pool.test.mjs test/runtime.test.mjs test/panel-api.test.mjs test/client-module.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    },
+    "engines": {
+      "dsh": ">=0.2.1-rc.2"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    }
+  }
+}
