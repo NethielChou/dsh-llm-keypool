@@ -34,7 +34,7 @@ dsh plugin --profile web add github:NethielChou/dsh-llm-keypool
 ### 从 npm 安装
 
 ```sh
-dsh plugin --profile web add dsh-llm-keypool
+dsh plugin --profile web add @nethiel/dsh-llm-keypool
 ```
 
 ### 本地开发 / 手动挂载
@@ -168,7 +168,7 @@ docs/spec.md           实现规格（内核契约、行为步骤）
 
 ## 卸载 / 回退
 
-- 面板在「设置 → 插件」或 `dsh plugin --profile <name> remove dsh-llm-keypool`，重启即卸载；
+- 面板在「设置 → 插件」或 `dsh plugin --profile <name> remove @nethiel/dsh-llm-keypool`，重启即卸载；
 - 只想停用：把对应行改 `disabled: true`，重启；
 - 面板保存过的池子文件在 `$DSH_HOME/keypool/route-pool.json`，可随时删除。
 - 卸载不会修改你的凭据文件。

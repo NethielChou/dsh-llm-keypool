@@ -34,7 +34,7 @@ function loadClient() {
   }
   runInNewContext(source, sandbox)
   assert.ok(config, 'client.js must call __ModuleLoader__.load')
-  assert.equal(config.id, 'dsh-llm-keypool')
+  assert.equal(config.id, '@nethiel/dsh-llm-keypool')
   return config
 }
 

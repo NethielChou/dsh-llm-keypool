@@ -5,3 +5,4 @@ tmp/
 Thumbs.db
 .env
 .env.*
+.npmrc

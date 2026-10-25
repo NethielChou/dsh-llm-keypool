@@ -1,20 +1,23 @@
-# dsh-llm-keypool — rotation-pool panel + two failover rows.
+# @nethiel/dsh-llm-keypool — rotation-pool panel + two failover rows.
 #
 # The panel row and the route-pool row are ENABLED: without a configured pool
 # both are inert (no pool → every request passes through unchanged), so saving
 # a pool in the panel starts working on the next request with no restart.
 # `llm-key-rotate` stays DISABLED because rotating credentials needs an
 # explicit opt-in (it acts as soon as activeRef/refs are configured).
+#
+# Row `id`s are the config namespaces; they are stable and must not be renamed
+# (renaming one would orphan that row's existing user config).
 - insert:
     - id: llm-keypool-panel
-      name: 'dsh-llm-keypool'
+      name: '@nethiel/dsh-llm-keypool'
       config: {}
     - id: llm-route-pool
-      name: dsh-llm-keypool/route-pool
+      name: '@nethiel/dsh-llm-keypool/route-pool'
       config:
         pools: []
     - id: llm-key-rotate
-      name: dsh-llm-keypool/key-rotate
+      name: '@nethiel/dsh-llm-keypool/key-rotate'
       disabled: true
       config:
         activeRef: ''

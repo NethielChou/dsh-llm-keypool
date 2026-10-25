@@ -1,5 +1,5 @@
 /**
- * `dsh-llm-keypool` — bundle root and **Host half of the rotation-pool panel**.
+ * `@nethiel/dsh-llm-keypool` — bundle root and **Host half of the rotation-pool panel**.
  *
  * This row exists for one reason: the Client module system attaches a bundle's
  * browser half to the Loader row whose specifier is exactly the package name.
@@ -11,7 +11,7 @@
  *  - `GET  /api/keypool/status`   active route, cooling routes, recent switches
  *
  * Nothing here changes request behavior; behavior lives in the sibling rows
- * `dsh-llm-keypool/route-pool` and `dsh-llm-keypool/key-rotate`.
+ * `@nethiel/dsh-llm-keypool/route-pool` and `@nethiel/dsh-llm-keypool/key-rotate`.
  *
  * @module dsh-llm-keypool
  */
@@ -25,7 +25,7 @@ import {
 import { readNonNegativeInt, readPositiveInt, readStringArray } from './lib/shared.js'
 
 /** Cordis plugin name (matches the package name so the browser half attaches). */
-export const name = 'dsh-llm-keypool'
+export const name = '@nethiel/dsh-llm-keypool'
 
 /** The panel needs the web server (its API) and the live model catalog. */
 export const inject = ['webServer', 'llm']
