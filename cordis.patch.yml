@@ -1,24 +1,23 @@
-# @nethiel/dsh-llm-keypool — rotation-pool panel + two failover rows.
+# @nethiel/dsh-llm-keypool — one row, three features.
 #
-# The panel row and the route-pool row are ENABLED: without a configured pool
-# both are inert (no pool → every request passes through unchanged), so saving
-# a pool in the panel starts working on the next request with no restart.
-# `llm-key-rotate` stays DISABLED because rotating credentials needs an
-# explicit opt-in (it acts as soon as activeRef/refs are configured).
+# DSH identifies a browser bundle by its package name, and a package mounted
+# through several Loader entries composes twice ("duplicate factory
+# registration"). So the package is mounted through exactly ONE row; this row
+# applies the route-pool and credential-rotation behaviors in-process.
 #
-# Row `id`s are the config namespaces; they are stable and must not be renamed
-# (renaming one would orphan that row's existing user config).
+# The row is ENABLED and inert until something is configured:
+#  - routePool is inert while its pool is empty (the panel writes the pool file);
+#  - keyRotate stays off unless `enabled: true` (or activeRef + refs are set),
+#    because rotating credentials needs an explicit opt-in.
+#
+# The row `id` is the config namespace: keep it `llm-keypool`.
 - insert:
-    - id: llm-keypool-panel
+    - id: llm-keypool
       name: '@nethiel/dsh-llm-keypool'
-      config: {}
-    - id: llm-route-pool
-      name: '@nethiel/dsh-llm-keypool/route-pool'
       config:
-        pools: []
-    - id: llm-key-rotate
-      name: '@nethiel/dsh-llm-keypool/key-rotate'
-      disabled: true
-      config:
-        activeRef: ''
-        refs: []
+        routePool:
+          pools: []
+        keyRotate:
+          enabled: false
+          activeRef: ''
+          refs: []

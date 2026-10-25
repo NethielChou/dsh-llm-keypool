@@ -14,23 +14,25 @@ const runtime = await import('../lib/runtime.js')
 function createCtx(services) {
   const routes = new Map()
   const logs = []
+  const webServer = {
+    register: ({ path, handler }) => {
+      routes.set(path, handler)
+      return () => routes.delete(path)
+    },
+  }
   return {
     routes,
     logs,
+    webServer,
     logger: {
       debug: (...args) => logs.push(['debug', ...args]),
       info: (...args) => logs.push(['info', ...args]),
       warn: (...args) => logs.push(['warn', ...args]),
       error: (...args) => logs.push(['error', ...args]),
     },
-    get: (name) => services[name],
+    // `ctx.get` must answer for the services this plugin reads through it.
+    get: (name) => (name === 'webServer' ? webServer : services[name]),
     effect: (fn) => { const dispose = fn(); return dispose },
-    webServer: {
-      register: ({ path, handler }) => {
-        routes.set(path, handler)
-        return () => routes.delete(path)
-      },
-    },
     on: () => () => {},
   }
 }
@@ -159,4 +161,20 @@ test('non-loopback requests are refused', async () => {
   req.socket.remoteAddress = '10.1.2.3'
   const result = await invoke(ctx.routes.get('/api/keypool/status'))
   assert.equal(result.status, 403)
+})
+
+test('the single row carries the route-pool config under routePool', async () => {
+  const ctx = createCtx({ llm: providerService })
+  apply(ctx, {
+    routePool: {
+      pools: [{ name: 'nested', routes: [{ provider: 'ustc-back', model: 'deepseek-flash' }, { provider: 'vendor-b', model: 'model-2' }] }],
+      cooldownMs: 1234,
+      maxSwitchesPerTurn: 4,
+    },
+  })
+  const read = await exchange('GET').invoke(ctx.routes.get('/api/keypool/config'))
+  assert.equal(read.status, 200)
+  assert.equal(read.body.row.pools[0].routes.length, 2)
+  assert.equal(read.body.row.cooldownMs, 1234)
+  assert.equal(read.body.row.maxSwitchesPerTurn, 4)
 })

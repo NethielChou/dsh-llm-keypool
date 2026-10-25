@@ -1,17 +1,43 @@
 /**
- * `@nethiel/dsh-llm-keypool` — bundle root and **Host half of the rotation-pool panel**.
+ * `@nethiel/dsh-llm-keypool` — the package's single Host entry: panel API plus
+ * both failover behaviors.
  *
- * This row exists for one reason: the Client module system attaches a bundle's
- * browser half to the Loader row whose specifier is exactly the package name.
- * It also owns the small loopback JSON API the panel talks to:
+ * ## Why one row for everything
+ *
+ * DSH's client module system identifies a browser bundle by its **package
+ * name** and treats more than one active Loader source for that package as a
+ * composition error — the bundle then executes twice and throws
+ * `duplicate factory registration`. The real-world symptom (0.1.0) was that
+ * error repeating in `desktop-next.log` every few minutes.
+ *
+ * So the package is mounted through exactly **one** row (`llm-keypool`), and
+ * that row applies the two behavior plugins in-process instead of exposing
+ * them as extra `/route-pool` and `/key-rotate` Loader entries:
+ *
+ *  - `lib/route-pool.js`  — ordered route pool, quota failover (applied always;
+ *    inert while the pool is empty)
+ *  - `lib/key-rotate.js`  — credential rotation (only when configured, because
+ *    it acts as soon as `activeRef` + `refs` are set)
+ *
+ * The panel half is this row's browser bundle; its loopback API lives here:
  *
  *  - `GET  /api/keypool/catalog`  every registered provider with its models
  *  - `GET  /api/keypool/config`   the GUI-managed pool file and the row fallback
  *  - `POST /api/keypool/config`   validate + atomically write the pool file
  *  - `GET  /api/keypool/status`   active route, cooling routes, recent switches
  *
- * Nothing here changes request behavior; behavior lives in the sibling rows
- * `@nethiel/dsh-llm-keypool/route-pool` and `@nethiel/dsh-llm-keypool/key-rotate`.
+ * Config shape (all optional):
+ *
+ * ```yaml
+ * - id: llm-keypool
+ *   name: '@nethiel/dsh-llm-keypool'
+ *   config:
+ *     routePool: { pools: [], cooldownMs: 600000, maxSwitchesPerTurn: 3, codes: [...], patterns: [...] }
+ *     keyRotate: { enabled: false, activeRef: '', refs: [] }
+ * ```
+ *
+ * A flat legacy shape (`pools`, `codes`, `activeRef`, `refs` at the top level)
+ * is still honoured so configs written for 0.1.0 keep working.
  *
  * @module dsh-llm-keypool
  */
@@ -23,12 +49,17 @@ import {
   writeStoredConfig,
 } from './lib/runtime.js'
 import { readNonNegativeInt, readPositiveInt, readStringArray } from './lib/shared.js'
+import { apply as applyRoutePool } from './lib/route-pool.js'
+import { apply as applyKeyRotate } from './lib/key-rotate.js'
 
 /** Cordis plugin name (matches the package name so the browser half attaches). */
 export const name = '@nethiel/dsh-llm-keypool'
 
-/** The panel needs the web server (its API) and the live model catalog. */
-export const inject = ['webServer', 'llm']
+/**
+ * No required inject: services are read through `ctx.get(...)` so this row also
+ * loads in profiles without a web server (headless), where only the failover
+ * behavior matters and the panel API is simply not registered.
+ */
 
 const PREFIX = '/api/keypool/'
 
@@ -81,16 +112,53 @@ const modelEntry = (model) => ({
     : (typeof model?.id === 'string' ? model.id : String(model)),
 })
 
+/** @returns {boolean} a non-array object. */
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/**
+ * Behavior options for `lib/route-pool.js`: the nested `routePool` object, or
+ * the flat 0.1.0 layout as a fallback.
+ * @param {Record<string, any>} config
+ */
+function routePoolOptions(config) {
+  if (isPlainObject(config.routePool)) return config.routePool
+  return {
+    ...(Array.isArray(config.pools) ? { pools: config.pools } : {}),
+    ...(config.codes === undefined ? {} : { codes: config.codes }),
+    ...(config.patterns === undefined ? {} : { patterns: config.patterns }),
+    ...(config.cooldownMs === undefined ? {} : { cooldownMs: config.cooldownMs }),
+    ...(config.maxSwitchesPerTurn === undefined ? {} : { maxSwitchesPerTurn: config.maxSwitchesPerTurn }),
+    ...(config.dryRun === undefined ? {} : { dryRun: config.dryRun }),
+  }
+}
+
+/**
+ * Behavior options for `lib/key-rotate.js`: the nested `keyRotate` object, or
+ * the flat 0.1.0 layout as a fallback.
+ * @param {Record<string, any>} config
+ */
+function keyRotateOptions(config) {
+  if (isPlainObject(config.keyRotate)) return config.keyRotate
+  return {
+    ...(config.activeRef === undefined ? {} : { activeRef: config.activeRef }),
+    ...(config.refs === undefined ? {} : { refs: config.refs }),
+    ...(config.maxSwitchesPerTurn === undefined ? {} : { maxSwitchesPerTurn: config.maxSwitchesPerTurn }),
+    ...(config.watchProviders === undefined ? {} : { watchProviders: config.watchProviders }),
+    ...(config.dryRun === undefined ? {} : { dryRun: config.dryRun }),
+  }
+}
+
 /**
  * @param {any} ctx Cordis context.
- * @param {Record<string, unknown>} [config] this row's config (row fallback shown by the panel).
+ * @param {Record<string, any>} [config] this row's config.
  */
 export function apply(ctx, config = {}) {
-  const rowCodes = readStringArray(config.codes)
+  const routePool = routePoolOptions(config)
+  const rowCodes = readStringArray(routePool.codes)
   const rowFallback = {
-    pools: Array.isArray(config.pools) ? config.pools : [],
-    cooldownMs: readNonNegativeInt(config.cooldownMs, 10 * 60_000),
-    maxSwitchesPerTurn: readPositiveInt(config.maxSwitchesPerTurn, 3),
+    pools: Array.isArray(routePool.pools) ? routePool.pools : [],
+    cooldownMs: readNonNegativeInt(routePool.cooldownMs, 10 * 60_000),
+    maxSwitchesPerTurn: readPositiveInt(routePool.maxSwitchesPerTurn, 3),
     ...(rowCodes === undefined ? {} : { codes: rowCodes }),
   }
 
@@ -105,7 +173,10 @@ export function apply(ctx, config = {}) {
     })
   }
 
-  ctx.effect(() => ctx.webServer.register({
+  /** The web server is optional: headless profiles have none. */
+  const webServer = typeof ctx.get === 'function' ? ctx.get('webServer') : undefined
+
+  if (webServer !== undefined) ctx.effect(() => webServer.register({
     kind: 'exact',
     path: `${PREFIX}catalog`,
     handler: (req, res) => {
@@ -135,7 +206,7 @@ export function apply(ctx, config = {}) {
     },
   }), 'llm-keypool: catalog route')
 
-  ctx.effect(() => ctx.webServer.register({
+  if (webServer !== undefined) ctx.effect(() => webServer.register({
     kind: 'exact',
     path: `${PREFIX}config`,
     handler: (req, res) => {
@@ -160,7 +231,7 @@ export function apply(ctx, config = {}) {
     },
   }), 'llm-keypool: config route')
 
-  ctx.effect(() => ctx.webServer.register({
+  if (webServer !== undefined) ctx.effect(() => webServer.register({
     kind: 'exact',
     path: `${PREFIX}status`,
     handler: (req, res) => {
@@ -169,4 +240,17 @@ export function apply(ctx, config = {}) {
       sendJson(res, 200, statusSnapshot())
     },
   }), 'llm-keypool: status route')
+
+  // ---- behavior, applied in this fiber (one Loader source for the package) ----
+  applyRoutePool(ctx, routePool)
+
+  const keyRotate = keyRotateOptions(config)
+  const activeRef = typeof keyRotate.activeRef === 'string' ? keyRotate.activeRef : ''
+  const refs = Array.isArray(keyRotate.refs) ? keyRotate.refs : []
+  const keyRotateEnabled = keyRotate.enabled === true
+    || (keyRotate.enabled === undefined && activeRef !== '' && refs.length > 0)
+  if (keyRotateEnabled) {
+    ctx.logger.info('llm-keypool: applying credential rotation (llm-key-rotate)')
+    applyKeyRotate(ctx, { ...keyRotate, enabled: undefined })
+  }
 }

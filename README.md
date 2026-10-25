@@ -10,9 +10,14 @@
 
 | 部分 | row id | 作用 |
 |---|---|---|
-| **轮换池面板**（图形界面） | `llm-keypool-panel` | 从 DSH 里**已经配好**的供应商和模型里勾选、排序，存成轮换池；显示当前路由、冷却中的供应商、最近切换记录 |
-| **路由池 fallback** | `llm-route-pool` | 当前路由额度用尽 → 冷却它 → 同一步自动改用池里的下一条（可跨供应商、跨模型） |
-| **凭据轮换**（可选，默认关闭） | `llm-key-rotate` | 同一个供应商有多把 key 时，额度用尽自动把下一把 key 写进当前凭据引用 |
+| 能力 | 行 id | 说明 |
+|---|---|---|
+| **轮换池面板**（图形界面） | `llm-keypool` | 从 DSH 里**已经配好**的供应商和模型里勾选、排序，存成轮换池；显示当前路由、冷却中的供应商、最近切换记录 |
+| **路由池 fallback** | `llm-keypool` | 当前路由额度用尽 → 冷却它 → 同一步自动改用池里的下一条（可跨供应商、跨模型） |
+| **凭据轮换**（可选，默认关闭） | `llm-keypool` | 同一个供应商有多把 key 时，额度用尽自动把下一把 key 写进当前凭据引用 |
+
+> 一个包只挂**一行**（`llm-keypool`）：DSH 的浏览器模块系统按包名识别 bundle，一个包挂多个 Loader 入口会
+> 触发 `duplicate factory registration`。面板和两个兜底行为都由这一行加载。
 
 - 面板入口：侧边栏「**轮换池**」一行（与「用量/余额」同款样式；侧栏收起时是圆形图标）。
 - 池子按**顺序兜底**：第一条优先，额度用完换第二条，依此类推；当前健康时绝不折腾。
@@ -89,32 +94,43 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 也可以不用面板，直接在 profile 的 `cordis.patch.yml` 写行配置（面板文件优先）：
 
 ```yaml
-- id: llm-route-pool
+- id: llm-keypool
   disabled: false
   config:
-    pools:
-      - name: 手写池
-        routes:
-          - provider: vendor-a
-            model: model-1
-          - provider: vendor-b
-            model: model-2
-    cooldownMs: 600000
-    maxSwitchesPerTurn: 3
-    # codes: [QUOTA, ACCOUNT_QUOTA, AUTH]   # 可选：额外把哪些失败当作额度类错误
-    # patterns: ['额度\s*(?:不足|用尽)']      # 可选：自定义报错文案正则（默认已含中英文常见措辞）
+    routePool:
+      pools:
+        - name: 手写池
+          routes:
+            - provider: vendor-a
+              model: model-1
+            - provider: vendor-b
+              model: model-2
+      cooldownMs: 600000
+      maxSwitchesPerTurn: 3
+      # codes: [QUOTA, ACCOUNT_QUOTA, AUTH]   # 可选：额外把哪些失败当作额度类错误
+      # patterns: ['额度\s*(?:不足|用尽)']      # 可选：自定义报错文案正则（默认已含中英文常见措辞）
+    keyRotate:
+      enabled: false
 ```
 
 凭据轮换（同一供应商多把 key）：
 
 ```yaml
-- id: llm-key-rotate
-  disabled: false
+- id: llm-keypool
   config:
-    activeRef: PROVIDER_API_KEY_1        # provider 的 apiKeyEnv 指向的凭据引用
-    refs: [PROVIDER_API_KEY_1, PROVIDER_API_KEY_2, PROVIDER_API_KEY_3]
-    maxSwitchesPerTurn: 3
+    keyRotate:
+      enabled: true
+      activeRef: PROVIDER_KEY_ACTIVE        # provider 的 apiKeyEnv 指向的凭据引用
+      refs: [PROVIDER_KEY_ACTIVE, PROVIDER_KEY_B, PROVIDER_KEY_C]
+      maxSwitchesPerTurn: 3
 ```
+
+> 也兼容 0.1.0 的扁平写法（`pools` / `codes` / `activeRef` / `refs` 直接写在行 config 顶层），
+> 升级不会让旧配置失效。
+
+> **为什么只有一个行？** DSH 的浏览器模块系统按**包名**识别 bundle，一个包同时挂多个 Loader 入口会被当成
+> 组合错误（实测报 `duplicate factory registration`）。所以这个包只挂一行 `llm-keypool`，
+> 路由池/凭据轮换两个行为由同一行在进程内应用。
 
 > 内置的额度文案识别（可被 `patterns` 覆盖）：`insufficient quota/balance/credits`、`quota|usage limit exceeded`、
 > `余额不足`、`额度用尽/耗尽/超限`、`配额不足`、`欠费`。如果供应商文案特殊，把实际文本加进 `patterns`。
@@ -135,7 +151,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 
 ## 验证
 
-- 单元测试：`node --test test/*.mjs`，**44/44 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
+- 单元测试：`node --test test/*.mjs`，**45/45 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
   面板三个回环端点/浏览器半区加载/闲时无副作用）。
 - 端到端（真实 DSH headless + 本地 mock OpenAI 网关）：
   - 跨供应商跨模型兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0；
