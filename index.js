@@ -56,10 +56,13 @@ import { apply as applyKeyRotate } from './lib/key-rotate.js'
 export const name = '@nethiel/dsh-llm-keypool'
 
 /**
- * No required inject: services are read through `ctx.get(...)` so this row also
- * loads in profiles without a web server (headless), where only the failover
- * behavior matters and the panel API is simply not registered.
+ * The panel API needs the web server (and the live model catalog). Declaring
+ * them as required inject makes Cordis activate this row *after* those services
+ * are up: reading `ctx.get('webServer')` at apply time instead returns
+ * `undefined` while the service fiber is still inactive, which silently skips
+ * the routes and makes the panel see HTTP 404 (observed in 0.1.2).
  */
+export const inject = ['webServer', 'llm']
 
 const PREFIX = '/api/keypool/'
 
@@ -173,10 +176,7 @@ export function apply(ctx, config = {}) {
     })
   }
 
-  /** The web server is optional: headless profiles have none. */
-  const webServer = typeof ctx.get === 'function' ? ctx.get('webServer') : undefined
-
-  if (webServer !== undefined) ctx.effect(() => webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: `${PREFIX}catalog`,
     handler: (req, res) => {
@@ -206,7 +206,7 @@ export function apply(ctx, config = {}) {
     },
   }), 'llm-keypool: catalog route')
 
-  if (webServer !== undefined) ctx.effect(() => webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: `${PREFIX}config`,
     handler: (req, res) => {
@@ -231,7 +231,7 @@ export function apply(ctx, config = {}) {
     },
   }), 'llm-keypool: config route')
 
-  if (webServer !== undefined) ctx.effect(() => webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: `${PREFIX}status`,
     handler: (req, res) => {
@@ -242,7 +242,13 @@ export function apply(ctx, config = {}) {
   }), 'llm-keypool: status route')
 
   // ---- behavior, applied in this fiber (one Loader source for the package) ----
-  applyRoutePool(ctx, routePool)
+  // A behavior-initialisation failure must never take the panel API down with it.
+  try {
+    applyRoutePool(ctx, routePool)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    ctx.logger.error(`llm-keypool: route-pool init failed: ${message}`)
+  }
 
   const keyRotate = keyRotateOptions(config)
   const activeRef = typeof keyRotate.activeRef === 'string' ? keyRotate.activeRef : ''
@@ -250,7 +256,12 @@ export function apply(ctx, config = {}) {
   const keyRotateEnabled = keyRotate.enabled === true
     || (keyRotate.enabled === undefined && activeRef !== '' && refs.length > 0)
   if (keyRotateEnabled) {
-    ctx.logger.info('llm-keypool: applying credential rotation (llm-key-rotate)')
-    applyKeyRotate(ctx, { ...keyRotate, enabled: undefined })
+    try {
+      ctx.logger.info('llm-keypool: applying credential rotation (llm-key-rotate)')
+      applyKeyRotate(ctx, { ...keyRotate, enabled: undefined })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.logger.error(`llm-keypool: key-rotate init failed: ${message}`)
+    }
   }
 }
