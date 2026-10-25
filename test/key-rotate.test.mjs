@@ -55,7 +55,7 @@ test('leaves transient non-quota failures alone', async () => {
   const { dispatch, credentials } = setup()
   const result = await dispatch(
     'agent/request-error',
-    requestErrorPayload({ provider: 'lab-b', failure: { code: 'RATE_LIMIT', message: 'rate limit exceeded' } }),
+    requestErrorPayload({ provider: 'lab-b', failure: { code: 'INVALID_REQUEST', message: 'bad tool schema' } }),
     async () => TERMINAL,
   )
   assert.equal(result, TERMINAL)

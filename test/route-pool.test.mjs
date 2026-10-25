@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { apply } from '../lib/route-pool.js'
+import { statusSnapshot } from '../lib/runtime.js'
 import { createFakeCtx, requestErrorPayload, requestPayload } from './helpers/fake-ctx.mjs'
 
 /** Keep every test on a private (absent) GUI config file unless it opts in. */
@@ -130,7 +131,7 @@ test('applies a per-route model override while keeping other fields', async () =
 
 test('ignores non-quota failures', async () => {
   const { dispatch } = setup()
-  const result = await fail(dispatch, 'route-a', { code: 'RATE_LIMIT', message: 'rate limit exceeded' })
+  const result = await fail(dispatch, 'route-a', { code: 'INVALID_REQUEST', message: 'bad tool schema' })
   assert.equal(result, TERMINAL)
   // No cooldown was recorded, so the route stays selected.
   assert.equal((await request(dispatch, 'route-a')).provider, 'route-a')
@@ -274,4 +275,18 @@ test('warns and stays inactive on an empty pool config', async () => {
   apply(ctx, { pools: [] })
   assert.ok(logs.some((entry) => entry.level === 'warn' && String(entry.args[0]).includes('llm-route-pool')))
   assert.equal((await request(dispatch, 'route-a')).provider, 'route-a')
+})
+
+test('RATE_LIMIT is a default trigger with a short transient cooldown', async () => {
+  const { ctx, dispatch } = createFakeCtx()
+  apply(ctx, { pools: POOL_CONFIG.pools, cooldownMs: 600000 })
+  const rateLimited = { code: 'RATE_LIMIT', message: '429: Rate limit exceeded for api_key' }
+  assert.deepEqual(await fail(dispatch, 'route-a', rateLimited), { kind: 'retry' })
+  // The provider is cooled briefly (not the full 10 minutes) and the next
+  // request is routed to the next pool route.
+  const cooling = statusSnapshot().cooling.find((entry) => entry.provider === 'route-a')
+  assert.ok(cooling, 'route-a should be cooling')
+  assert.ok(cooling.remainingMs <= 61_000, `expected <= 61s, got ${cooling.remainingMs}`)
+  const next = await request(dispatch, 'route-a')
+  assert.equal(next.provider, 'route-b')
 })

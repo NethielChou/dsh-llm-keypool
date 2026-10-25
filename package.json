@@ -1,6 +1,6 @@
 {
   "name": "@nethiel/dsh-llm-keypool",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "DSH rotation pool: a sidebar panel to pick configured provider/model routes and fail over across them on quota errors, plus optional multi-key rotation.",
   "keywords": [

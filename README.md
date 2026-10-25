@@ -86,9 +86,10 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 }
 ```
 
-- `codes` 是**触发切换的失败类型**：默认 `QUOTA / ACCOUNT_QUOTA`（额度类）。面板里的
+- `codes` 是**触发切换的失败类型**：默认 `QUOTA / ACCOUNT_QUOTA / RATE_LIMIT`（额度类 + 429 限流）。面板里的
   「认证失败（401/403）也切换」勾选项就是往这里加 `AUTH`；也可以在文件里直接写成
   `["QUOTA", "ACCOUNT_QUOTA", "AUTH"]`。
+- **限流（429 / RATE_LIMIT）默认就会切换**，但只把该供应商冷却 **60 秒**（额度类失败才用完整的冷却分钟数），避免一次瞬时限流把好线路冻结 10 分钟。
 - 除了 `codes`，默认还会按中英文报错文案（余额不足/额度用尽/quota exceeded 等）判断；文案特殊时在行配置里加 `patterns`。
 
 也可以不用面板，直接在 profile 的 `cordis.patch.yml` 写行配置（面板文件优先）：
@@ -151,7 +152,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 
 ## 验证
 
-- 单元测试：`node --test test/*.mjs`，**45/45 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
+- 单元测试：`node --test test/*.mjs`，**46/46 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
   面板三个回环端点/浏览器半区加载/闲时无副作用）。
 - 端到端（真实 DSH headless + 本地 mock OpenAI 网关）：
   - 跨供应商跨模型兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0；
