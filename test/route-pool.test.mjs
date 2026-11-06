@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { apply } from '../lib/route-pool.js'
+import { matchesFailure } from '../lib/shared.js'
 import { statusSnapshot } from '../lib/runtime.js'
 import { createFakeCtx, requestErrorPayload, requestPayload } from './helpers/fake-ctx.mjs'
 
@@ -289,4 +290,53 @@ test('RATE_LIMIT is a default trigger with a short transient cooldown', async ()
   assert.ok(cooling.remainingMs <= 61_000, `expected <= 61s, got ${cooling.remainingMs}`)
   const next = await request(dispatch, 'route-a')
   assert.equal(next.provider, 'route-b')
+})
+
+test('default patterns recognize a 422 budget_exceeded failure', () => {
+  const budget = {
+    code: 'PI_AI_ERROR',
+    message: '422: {"message":"ExceededBudget: Key over 3h budget. Spend=$30.0000, Limit=$30.00",'
+      + '"type":"budget_exceeded","param":null,"code":".422"}',
+  }
+  assert.equal(matchesFailure(budget), true)
+  assert.equal(matchesFailure({ code: 'PI_AI_ERROR', message: '400 invalid request payload' }), false)
+})
+
+test('422 budget_exceeded (kernel PI_AI_ERROR) triggers a route switch', async () => {
+  const { ctx, dispatch } = createFakeCtx()
+  apply(ctx, { pools: POOL_CONFIG.pools, cooldownMs: 600000 })
+  const budget = {
+    code: 'PI_AI_ERROR',
+    message: '422: {"message":"ExceededBudget: Key over 3h budget. Spend=$30.0000, Limit=$30.00",'
+      + '"type":"budget_exceeded","param":null,"code":".422"}',
+  }
+  assert.deepEqual(await fail(dispatch, 'route-a', budget), { kind: 'retry' })
+  const next = await request(dispatch, 'route-a')
+  assert.equal(next.provider, 'route-b')
+})
+
+test('unrelated PI_AI_ERROR is not treated as a quota failure', async () => {
+  const { ctx, dispatch } = createFakeCtx()
+  apply(ctx, { pools: POOL_CONFIG.pools, cooldownMs: 600000 })
+  const plain = { code: 'PI_AI_ERROR', message: '400: invalid request payload' }
+  assert.equal(await fail(dispatch, 'route-a', plain), TERMINAL)
+})
+
+test('panel-written patterns teach a new wording without a release', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-keypool-patterns-'))
+  const previous = process.env.DSH_KEYPOOL_CONFIG
+  const file = join(dir, 'route-pool.json')
+  process.env.DSH_KEYPOOL_CONFIG = file
+  try {
+    writeFileSync(file, JSON.stringify({ ...POOL_CONFIG, patterns: ['custom_stop_reason'] }), 'utf8')
+    const { ctx, dispatch } = createFakeCtx()
+    apply(ctx, { pools: [] })
+    const custom = { code: 'PI_AI_ERROR', message: 'upstream said custom_stop_reason' }
+    assert.deepEqual(await fail(dispatch, 'route-a', custom), { kind: 'retry' })
+    // The stored list replaces the default patterns: normal quota wording no longer matches.
+    const quota = { code: 'PI_AI_ERROR', message: 'insufficient quota: current quota exhausted' }
+    assert.equal(await fail(dispatch, 'route-b', quota), TERMINAL)
+  } finally {
+    process.env.DSH_KEYPOOL_CONFIG = previous
+  }
 })

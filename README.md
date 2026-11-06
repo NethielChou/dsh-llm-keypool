@@ -134,7 +134,9 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 > 路由池/凭据轮换两个行为由同一行在进程内应用。
 
 > 内置的额度文案识别（可被 `patterns` 覆盖）：`insufficient quota/balance/credits`、`quota|usage limit exceeded`、
-> `余额不足`、`额度用尽/耗尽/超限`、`配额不足`、`欠费`。如果供应商文案特殊，把实际文本加进 `patterns`。
+> `余额不足`、`额度用尽/耗尽/超限`、`配额不足`、`欠费`，以及按窗口预算计费的网关文案
+> （`ExceededBudget`、`budget_exceeded`、`over 3h budget`，例如 USTC 网关的 HTTP 422）。
+> 如果供应商文案特殊，把实际文本加进 `patterns`（`route-pool.json` 也支持 `patterns`，保存后即时生效）。
 
 ## 工作原理
 
@@ -152,7 +154,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 
 ## 验证
 
-- 单元测试：`node --test test/*.mjs`，**46/46 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
+- 单元测试：`node --test test/*.mjs`，**50/50 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
   面板三个回环端点/浏览器半区加载/闲时无副作用）。
 - 端到端（真实 DSH headless + 本地 mock OpenAI 网关）：
   - 跨供应商兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0（候选会跳过同供应商，所以同供应商的两个模型不会互相兜底）；
@@ -162,7 +164,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 
 ## 已知限制
 
-1. 供应商报错文案需要能被识别（默认覆盖中英文常见措辞；特殊文案加 `patterns`）。
+1. 供应商报错文案需要能被识别（默认覆盖中英文常见措辞与 budget 类文案；特殊文案加 `patterns`，`route-pool.json` 里也支持）。
 2. 同一账号下的多把 key 可能共享额度，轮换前请确认额度独立。
 3. 换 key / 换模型会让供应商侧前缀缓存失效，切换后的第一轮输入 token 重新计费（成本略增）。
 4. 冷却状态在内存中，重启后清空（首个失败会重新标记，不影响正确性）。
