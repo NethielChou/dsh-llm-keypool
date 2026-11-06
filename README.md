@@ -13,7 +13,7 @@
 | 能力 | 行 id | 说明 |
 |---|---|---|
 | **轮换池面板**（图形界面） | `llm-keypool` | 从 DSH 里**已经配好**的供应商和模型里勾选、排序，存成轮换池；显示当前路由、冷却中的供应商、最近切换记录 |
-| **路由池 fallback** | `llm-keypool` | 当前路由额度用尽 → 冷却它 → 同一步自动改用池里的下一条（可跨供应商、跨模型） |
+| **路由池 fallback** | `llm-keypool` | 当前路由额度用尽 → 冷却它 → 同一步自动改用池里的下一条（跨不同供应商；同一供应商内的多个模型不会互相兜底） |
 | **凭据轮换**（可选，默认关闭） | `llm-keypool` | 同一个供应商有多把 key 时，额度用尽自动把下一把 key 写进当前凭据引用 |
 
 > 一个包只挂**一行**（`llm-keypool`）：DSH 的浏览器模块系统按包名识别 bundle，一个包挂多个 Loader 入口会
@@ -155,7 +155,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 - 单元测试：`node --test test/*.mjs`，**46/46 通过**（配置解析/预算/中文文案/prepend 顺序/冷却恢复/
   面板三个回环端点/浏览器半区加载/闲时无副作用）。
 - 端到端（真实 DSH headless + 本地 mock OpenAI 网关）：
-  - 跨供应商跨模型兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0；
+  - 跨供应商兜底：`A/flash` 402 → 自动切 `B/chat`，`pong`、exit 0（候选会跳过同供应商，所以同供应商的两个模型不会互相兜底）；
   - 全池耗尽：每条路由只试一次后正常失败，不死循环；BOM 配置、非法配置、只读降级均有覆盖。
 - 真实网关验证（LiteLLM 兼容网关）：无效 key 返回 `401 AUTH` → 自动切换有效的 key → 同一步成功返回。
 - 面板后端：`/api/keypool/catalog|config|status` 单元测试覆盖 200/400/403/405 与写入后即时生效。
@@ -167,6 +167,7 @@ dsh plugin --profile web add link:$(pwd)/dsh-llm-keypool
 3. 换 key / 换模型会让供应商侧前缀缓存失效，切换后的第一轮输入 token 重新计费（成本略增）。
 4. 冷却状态在内存中，重启后清空（首个失败会重新标记，不影响正确性）。
 5. 只覆盖 agent loop 的模型请求（`agent/request-error`）；`ctx.llm.stream()` 直连调用不受影响。
+6. 兜底会**跳过同供应商候选**：池子里「同一供应商的两个模型」不会互相切换，请至少配置两个不同供应商。
 6. 面板依赖宿主 `sidebar.footer.action` 槽位与 `webServer` 回环端点（DSH Desktop / web profile 均满足）。
 
 ## 文件
